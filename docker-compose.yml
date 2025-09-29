@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Updated for Ubuntu 24.04)
+  postgres:
+    image: postgres:16-alpine
+    container_name: olt-manager-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: oltmanager_db
+      POSTGRES_USER: oltmanager
+      POSTGRES_PASSWORD: oltmanager123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - olt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oltmanager -d oltmanager_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Updated with authentication)
+  redis:
+    image: redis:7-alpine
+    container_name: olt-manager-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass oltmanager123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - olt-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API (Updated for Ubuntu 24.04)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: olt-manager-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://oltmanager:oltmanager123@postgres:5432/oltmanager_db
+      - REDIS_URL=redis://:oltmanager123@redis:6379
+      - SECRET_KEY=your-secret-key-change-this-in-production
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - ENVIRONMENT=production
+      - CORS_ORIGINS=http://localhost:3000,http://localhost
+    volumes:
+      - ./backend:/app
+      - backend_logs:/app/logs
+    ports:
+      - "8000:8000"
+    networks:
+      - olt-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Web App (Updated for Ubuntu 24.04)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: olt-manager-frontend
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - olt-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy (Updated for Ubuntu 24.04)
+  nginx:
+    image: nginx:alpine
+    container_name: olt-manager-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - olt-network
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring Service (Optional)
+  monitor:
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile
+    container_name: olt-manager-monitor
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://oltmanager:oltmanager123@postgres:5432/oltmanager_db
+      - REDIS_URL=redis://:oltmanager123@redis:6379
+      - SNMP_COMMUNITY=public
+      - MONITORING_INTERVAL=60
+    volumes:
+      - ./monitoring:/app
+      - monitor_logs:/app/logs
+    networks:
+      - olt-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+  monitor_logs:
+    driver: local
+
+networks:
+  olt-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

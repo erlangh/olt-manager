@@ -1,0 +1,35 @@
+{
+  "name": "olt-manager-zte-c320",
+  "version": "1.0.0",
+  "description": "Complete OLT Manager for ZTE C320 with web interface",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "cd backend && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "frontend:dev": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd backend && pip install -r requirements.txt && cd ../frontend && npm install",
+    "setup:db": "cd backend && python setup_db.py",
+    "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",
+    "backend:start": "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000",
+    "frontend:start": "cd frontend && serve -s build -l 3000"
+  },
+  "keywords": [
+    "olt",
+    "zte",
+    "c320",
+    "snmp",
+    "network",
+    "management",
+    "ont",
+    "fiber"
+  ],
+  "author": "OLT Manager Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+}
