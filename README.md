@@ -62,7 +62,7 @@ Sistem manajemen OLT (Optical Line Terminal) berbasis web untuk monitoring dan k
 
 ```bash
 # Clone repository
-git clone https://github.com/[your-username]/olt-manager.git
+git clone https://github.com/erlangh/olt-manager.git
 cd olt-manager
 
 # Jalankan script instalasi
